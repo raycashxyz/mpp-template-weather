@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.3",
+    "@raycashxyz/mpp": "^0.1.0",
     "hono": "^4.7.10",
     "mppx": "^0.4.7"
   },

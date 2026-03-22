@@ -11,8 +11,8 @@
  */
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { Method, Receipt, z } from "mppx";
-import type { Mppx as MppxType } from "mppx/hono";
+import { Mppx } from "mppx/hono";
+import { raycash } from "@raycashxyz/mpp/server";
 
 import { getWeather, listCities } from "./weather-data.js";
 
@@ -23,109 +23,28 @@ import { getWeather, listCities } from "./weather-data.js";
 const RAYCASH_API_KEY = process.env.RAYCASH_API_KEY ?? "";
 const RAYCASH_URL = process.env.RAYCASH_URL ?? "http://localhost:3003";
 const PRICE_PER_CALL = process.env.PRICE_PER_CALL ?? "1000";
-const CURRENCY = process.env.CURRENCY ?? "0xded3320124c849b05c2ebec6997644a825e44e53";
+const CURRENCY = (process.env.CURRENCY ?? "0xded3320124c849b05c2ebec6997644a825e44e53") as `0x${string}`;
 const CHAIN_ID = Number(process.env.CHAIN_ID ?? "11155111");
 const MIN_DEPOSIT = process.env.MIN_DEPOSIT ?? "100000";
 const PORT = Number(process.env.PORT ?? 3004);
 const SERVICE_URL = process.env.SERVICE_URL ?? `http://localhost:${PORT}`;
 
 // ---------------------------------------------------------------------------
-// Raycash payment method definition
+// MPP middleware — one line to add Raycash payments
 // ---------------------------------------------------------------------------
 
-const raycashChannel = Method.from({
-  name: "raycash",
-  intent: "channel",
-  schema: {
-    credential: {
-      payload: z.object({
-        signature: z.signature(),
-        channel: z.address(),
-        cumulativeAmount: z.amount(),
-      }),
-    },
-    request: z.object({
-      amount: z.amount(),
-      lastCumulative: z.amount(),
-      channelStateUrl: z.string(),
-      currency: z.address(),
-      chainId: z.number(),
-      minDeposit: z.amount(),
-    }),
-  },
-});
-
-const raycashMethod = Method.toServer(raycashChannel, {
-  defaults: {
-    currency: CURRENCY,
-    chainId: CHAIN_ID,
-    minDeposit: MIN_DEPOSIT,
-    channelStateUrl: `${SERVICE_URL}/channel-state`,
-  },
-
-  // Inject lastCumulative per-channel on every request.
-  // First 402 (no credential) → "0". Retry with channel → real value from Raycash.
-  async request({ credential, request }) {
-    const payload = credential?.payload as { channel?: string } | undefined;
-
-    if (!payload?.channel) {
-      return { ...request, lastCumulative: "0" };
-    }
-
-    const res = await fetch(
-      `${RAYCASH_URL}/api/vouchers/latest?channelAddress=${encodeURIComponent(payload.channel)}`,
-      { headers: { Authorization: `Bearer ${RAYCASH_API_KEY}` } },
-    );
-    if (res.ok) {
-      const data = (await res.json()) as { cumulativeAmount?: string };
-      return { ...request, lastCumulative: data.cumulativeAmount ?? "0" };
-    }
-    return { ...request, lastCumulative: "0" };
-  },
-
-  async verify({ credential }) {
-    const { payload } = credential;
-
-    const verifyRes = await fetch(`${RAYCASH_URL}/api/vouchers/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${RAYCASH_API_KEY}` },
-      body: JSON.stringify({
-        voucher: { channel: payload.channel, cumulativeAmount: payload.cumulativeAmount },
-        signature: payload.signature,
-      }),
-    });
-
-    if (!verifyRes.ok) throw new Error(`Verification failed: ${verifyRes.status}`);
-    const result = (await verifyRes.json()) as { valid: boolean; reason?: string };
-    if (!result.valid) throw new Error(result.reason ?? "Voucher invalid");
-
-    await fetch(`${RAYCASH_URL}/api/vouchers/submit`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${RAYCASH_API_KEY}` },
-      body: JSON.stringify({
-        voucher: { channel: payload.channel, cumulativeAmount: payload.cumulativeAmount },
-        signature: payload.signature,
-      }),
-    });
-
-    return Receipt.from({
-      method: "raycash",
-      status: "success",
-      timestamp: new Date().toISOString(),
-      reference: `${payload.channel}:${payload.cumulativeAmount}`,
-    });
-  },
-});
-
-// ---------------------------------------------------------------------------
-// MPP middleware
-// ---------------------------------------------------------------------------
-
-const { Mppx: HonoMppx } = await import("mppx/hono") as { Mppx: typeof MppxType };
-
-const mppx = HonoMppx.create({
+const mppx = Mppx.create({
   secretKey: process.env.MPP_SECRET_KEY ?? "template-secret-key",
-  methods: [raycashMethod],
+  methods: [
+    raycash({
+      currency: CURRENCY,
+      chainId: CHAIN_ID,
+      minDeposit: MIN_DEPOSIT,
+      serviceUrl: SERVICE_URL,
+      raycashBaseUrl: RAYCASH_URL,
+      apiKey: RAYCASH_API_KEY,
+    }),
+  ],
 });
 
 // ---------------------------------------------------------------------------
