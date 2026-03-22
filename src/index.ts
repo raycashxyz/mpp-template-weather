@@ -61,16 +61,16 @@ const raycashMethod = Method.toServer(raycashChannel, {
     chainId: CHAIN_ID,
     minDeposit: MIN_DEPOSIT,
     channelStateUrl: `${SERVICE_URL}/channel-state`,
-    // "0" is the initial value for the first 402 response (before any channel exists).
-    // The request hook below overrides this per-channel on subsequent requests.
-    lastCumulative: "0",
   },
 
-  // Per-channel: update lastCumulative from Raycash when the client
-  // retries with a credential containing a channel address.
+  // Inject lastCumulative per-channel on every request.
+  // First 402 (no credential) → "0". Retry with channel → real value from Raycash.
   async request({ credential, request }) {
     const payload = credential?.payload as { channel?: string } | undefined;
-    if (!payload?.channel) return request;
+
+    if (!payload?.channel) {
+      return { ...request, lastCumulative: "0" };
+    }
 
     const res = await fetch(
       `${RAYCASH_URL}/api/vouchers/latest?channelAddress=${encodeURIComponent(payload.channel)}`,
@@ -78,11 +78,9 @@ const raycashMethod = Method.toServer(raycashChannel, {
     );
     if (res.ok) {
       const data = (await res.json()) as { cumulativeAmount?: string };
-      if (data.cumulativeAmount && data.cumulativeAmount !== "0") {
-        return { ...request, lastCumulative: data.cumulativeAmount };
-      }
+      return { ...request, lastCumulative: data.cumulativeAmount ?? "0" };
     }
-    return request;
+    return { ...request, lastCumulative: "0" };
   },
 
   async verify({ credential }) {
