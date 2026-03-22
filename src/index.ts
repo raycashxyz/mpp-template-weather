@@ -111,7 +111,7 @@ app.get("/channel-state", async (c) => {
 // Paid weather endpoint
 app.get(
   "/weather",
-  mppx.channel({ amount: PRICE_PER_CALL }),
+  mppx.channel({ amount: PRICE_PER_CALL, lastCumulative: "0" }),
   (c) => {
     const city = c.req.query("city");
     if (!city) return c.json({ error: "city query parameter required" }, 400);
