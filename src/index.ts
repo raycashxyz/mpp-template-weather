@@ -62,11 +62,56 @@ app.get("/", (c) =>
       "/weather?city=<name>": "Get weather (paid)",
       "/cities": "List available cities (free)",
       "/pricing": "Pricing info (free)",
+      "/skill": "Agent skill file (how to pay)",
     },
   }),
 );
 
 app.get("/cities", (c) => c.json({ cities: listCities() }));
+
+// Agent skill file — tells AI agents how to interact with this service
+app.get("/skill", (c) => {
+  const baseUrl = SERVICE_URL;
+  const skill = `# Weather API — Paid via Raycash MPP
+
+You are interacting with a paid Weather API. Requests to /weather cost ${PRICE_PER_CALL} smallest units per query.
+
+## Free Endpoints (use curl/fetch directly)
+
+- \`GET ${baseUrl}/\` — service info
+- \`GET ${baseUrl}/cities\` — list available cities
+- \`GET ${baseUrl}/pricing\` — pricing details
+- \`GET ${baseUrl}/skill\` — this file
+
+## Paid Endpoints (use mpp-pay)
+
+- \`GET ${baseUrl}/weather?city=<name>\` — weather data for a city (costs ${PRICE_PER_CALL} per query)
+
+## How to Pay
+
+Use the \`mpp-pay\` CLI tool:
+
+\`\`\`bash
+# First time: create a signing key
+pnpm mpp-pay --create-wallet
+
+# Make a paid request
+pnpm mpp-pay "${baseUrl}/weather?city=paris"
+\`\`\`
+
+## Workflow
+
+1. Check free endpoints first to understand the API
+2. Use \`mpp-pay\` for paid endpoints — it handles channel creation and payment automatically
+3. If the channel needs funding, the CLI will show the address and amount — ask the user to fund it
+4. Once funded, retry the same command
+
+## Available Cities
+
+Paris, Tokyo, New York, London, Berlin, Sydney, Dubai, Singapore, Toronto, São Paulo
+`;
+  return c.text(skill, 200, { "Content-Type": "text/markdown; charset=utf-8" });
+});
 
 app.get("/pricing", (c) =>
   c.json({
