@@ -27,7 +27,9 @@ const CURRENCY = (process.env.CURRENCY ?? "0xded3320124c849b05c2ebec6997644a825e
 const CHAIN_ID = Number(process.env.CHAIN_ID ?? "11155111");
 const MIN_DEPOSIT = process.env.MIN_DEPOSIT ?? "100000";
 const PORT = Number(process.env.PORT ?? 3004);
-const SERVICE_URL = process.env.SERVICE_URL ?? `http://localhost:${PORT}`;
+// Auto-detect URL on Vercel via VERCEL_URL env var
+const SERVICE_URL = process.env.SERVICE_URL
+  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${PORT}`);
 
 // ---------------------------------------------------------------------------
 // MPP middleware — one line to add Raycash payments
