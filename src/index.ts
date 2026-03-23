@@ -69,46 +69,61 @@ app.get("/", (c) =>
 
 app.get("/cities", (c) => c.json({ cities: listCities() }));
 
-// Agent skill file — tells AI agents how to interact with this service
+// Agent skill file — teaches agents how to use MPP to pay for API services
 app.get("/skill", (c) => {
   const baseUrl = SERVICE_URL;
-  const skill = `# Weather API — Paid via Raycash MPP
+  const skill = `# Machine Payments Protocol (MPP) — Agent Skill
 
-You are interacting with a paid Weather API. Requests to /weather cost ${PRICE_PER_CALL} smallest units per query.
+This service uses the Machine Payments Protocol (MPP) with Raycash for payments. Some endpoints are free, others require payment via signed vouchers.
 
-## Free Endpoints (use curl/fetch directly)
+## Discovery
 
-- \`GET ${baseUrl}/\` — service info
-- \`GET ${baseUrl}/cities\` — list available cities
-- \`GET ${baseUrl}/pricing\` — pricing details
-- \`GET ${baseUrl}/skill\` — this file
-
-## Paid Endpoints (use mpp-pay)
-
-- \`GET ${baseUrl}/weather?city=<name>\` — weather data for a city (costs ${PRICE_PER_CALL} per query)
-
-## How to Pay
-
-Use the \`mpp-pay\` CLI tool:
+Before making paid requests, discover the API:
 
 \`\`\`bash
-# First time: create a signing key
-pnpm mpp-pay --create-wallet
+# Service info — lists all endpoints and which are free/paid
+curl ${baseUrl}/
 
-# Make a paid request
-pnpm mpp-pay "${baseUrl}/weather?city=paris"
+# Pricing — shows cost per request, currency, and payment method
+curl ${baseUrl}/pricing
 \`\`\`
 
-## Workflow
+## Making Paid Requests
 
-1. Check free endpoints first to understand the API
-2. Use \`mpp-pay\` for paid endpoints — it handles channel creation and payment automatically
-3. If the channel needs funding, the CLI will show the address and amount — ask the user to fund it
-4. Once funded, retry the same command
+Paid endpoints return HTTP 402 (Payment Required) when called without payment. Use the \`mpp-pay\` CLI to handle payment automatically:
 
-## Available Cities
+\`\`\`bash
+# Create a signing wallet (first time only)
+pnpm mpp-pay --create-wallet
 
-Paris, Tokyo, New York, London, Berlin, Sydney, Dubai, Singapore, Toronto, São Paulo
+# Make a paid request — mpp-pay handles channel creation, voucher signing, and retry
+pnpm mpp-pay "${baseUrl}/<endpoint>"
+\`\`\`
+
+The CLI:
+1. Detects the 402 and reads the payment challenge
+2. Creates a payment channel with the service (first request only, ~15s)
+3. Signs an EIP-712 voucher authorizing the payment amount
+4. Retries the request with the voucher → gets the response
+
+## Funding
+
+Payment channels need tokens to cover future payments. If the channel has insufficient balance, the CLI shows:
+
+\`\`\`
+Channel needs funding!
+Send at least X USDC to: <channel-address>
+\`\`\`
+
+Ask the user to fund the channel address, then retry the same command. Channels persist — you only fund once.
+
+## Rules
+
+1. **Discover first** — always check \`/\` and \`/pricing\` before making paid requests
+2. **Use curl for free endpoints** — only use \`mpp-pay\` for paid endpoints that return 402
+3. **Tell the user the price** before making multiple paid requests
+4. **If funding is needed** — show the user the channel address and wait for them to confirm before retrying
+5. **First paid request may be slow** (~15s) — channel creation happens on the backend
 `;
   return c.text(skill, 200, { "Content-Type": "text/markdown; charset=utf-8" });
 });
