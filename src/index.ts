@@ -62,66 +62,18 @@ app.get("/", (c) =>
       "/weather?city=<name>": "Get weather (paid)",
       "/cities": "List available cities (free)",
       "/pricing": "Pricing info (free)",
-      "/skill": "Agent skill file (how to pay)",
+      "/SKILL.md": "Agent skill file (how to pay)",
     },
   }),
 );
 
 app.get("/cities", (c) => c.json({ cities: listCities() }));
 
-// Agent skill file — teaches agents how to use MPP to pay for API services
-app.get("/skill", (c) => {
-  const baseUrl = SERVICE_URL;
-  const skill = `# MPP Agent Skill
-
-The mpp-pay skill enables making paid API requests with automatic payment channel management via the Machine Payments Protocol.
-
-## Setup
-
-\`\`\`bash
-# Install (first time only)
-npm install -g @raycashxyz/mpp-cli
-
-# Create signing wallet (first time only — no ETH needed)
-mpp-pay --create-wallet
-
-# Verify
-mpp-pay --wallet
-\`\`\`
-
-## Core Commands
-
-- **Discover service:** \`curl ${baseUrl}/\` and \`curl ${baseUrl}/pricing\`
-- **Make paid request:** \`mpp-pay "${baseUrl}/<endpoint>"\`
-- **Check wallet:** \`mpp-pay --wallet\`
-
-## Important Rules
-
-**Always discover endpoints before requesting; never guess paths.** Use \`curl <service-url>/\` to see available endpoints and which are free vs paid. Only use \`mpp-pay\` for paid endpoints (those returning 402). Use \`curl\` for free endpoints.
-
-## How It Works
-
-1. \`mpp-pay\` sends the request → gets 402 with pricing
-2. Creates a payment channel with the service (first time only, ~15s)
-3. Signs an EIP-712 voucher for the price
-4. Retries with the voucher → gets the response
-
-## Funding
-
-If the channel has insufficient balance, \`mpp-pay\` shows:
-
-\`\`\`
-Channel needs funding!
-Send at least X USDC to: <channel-address>
-\`\`\`
-
-Ask the user to fund the address, then retry. Channels persist — fund once, pay many times.
-
-## Response Handling
-
-Return successful payloads directly to the user. Report payment/funding issues clearly and stop — don't retry without user confirmation.
-`;
-  return c.text(skill, 200, { "Content-Type": "text/markdown; charset=utf-8" });
+// Agent skill file — proxied from Raycash (canonical source)
+app.get("/SKILL.md", async (c) => {
+  const res = await fetch(`${RAYCASH_URL}/SKILL.md`);
+  if (!res.ok) return c.text("Skill not available", 502);
+  return c.text(await res.text(), 200, { "Content-Type": "text/markdown; charset=utf-8" });
 });
 
 app.get("/pricing", (c) =>
